@@ -1,78 +1,81 @@
-# from django.test import TestCase
-# from django.urls import reverse
-# from rest_framework import status
-# from rest_framework.test import APIClient
-# from .models import Item, User
-# from .serializers import ItemSerializer, UserSerializer, UserLoginSerializer
-# from rest_framework_simplejwt.tokens import AccessToken
+from django.test import TestCase
+from django.urls import reverse
+from rest_framework.test import APIClient, APITestCase
+from rest_framework import status
+from .models import Item, User
+from .serializers import ItemSerializer, UserSerializer
+from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
+from rest_framework.permissions import IsAuthenticated
+from datetime import datetime
+from .views import (
+    UserListCreateAPIView,
+    UserRetrieveUpdateDestroyAPIView,
+    ItemListCreateAPIView,
+    ItemRetrieveUpdateDestroyAPIView,
+    ItemListAPIView,
+    CustomPagination
+)
+class BaseTestCase(TestCase):
+    def setUp(self):
+        self.client = APIClient()
 
-# class BaseAuthenticatedAPITest(TestCase):
-#     def setUp(self):
-#         self.client = APIClient()
-#         self.user = User.objects.create(username='test_user', password='test_password')
-#         self.token = AccessToken.for_user(self.user)
+class UserLoginAPIViewTests(BaseTestCase):
+    def setUp(self):
+        super().setUp()
+        self.user = User.objects.create(username='testuser', password='testpassword')
 
-#     def get_authenticated_client(self):
-#         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self.token}')
-#         return self.client
+    def test_user_login_valid_credentials(self):
+        url = reverse('user-login')
+        data = {'username': 'testuser', 'password': 'testpassword'}
+        response = self.client.post(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('access', response.data)
+        self.assertIn('refresh', response.data)
 
-# class UserLoginAPIViewTest(BaseAuthenticatedAPITest):
-#     def test_user_login_valid_credentials(self):
-#         url = reverse('user-login')
-#         data = {'username': 'test_user', 'password': 'test_password'}
-#         response = self.client.post(url, data, format='json')
-#         self.assertEqual(response.status_code, status.HTTP_200_OK)
+    def test_user_login_invalid_credentials(self):
+        url = reverse('user-login')
+        data = {'username': 'testuser', 'password': 'wrongpassword'}
+        response = self.client.post(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertIn('message', response.data)
+        self.assertEqual(response.data['message'], 'Wrong Password')
 
-#     def test_user_login_invalid_credentials(self):
-#         url = reverse('user-login')
-#         data = {'username': 'test_user', 'password': 'wrong_password'}
-#         response = self.client.post(url, data, format='json')
-#         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+    def test_user_login_user_doesnt_exist(self):
+        url = reverse('user-login')
+        data = {'username': 'nonexistentuser', 'password': 'testpassword'}
+        response = self.client.post(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertIn('message', response.data)
+        self.assertEqual(response.data['message'], 'User doesnt Exist')
 
-# class UserListCreateAPIViewTest(BaseAuthenticatedAPITest):
-#     def test_user_list(self):
-#         url = reverse('user-list-create')
-#         response = self.get_authenticated_client().get(url)
-#         self.assertEqual(response.status_code, status.HTTP_200_OK)
+class UserListCreateAPIViewTests(APITestCase):
+    def setUp(self):
+        self.user_data = {'username': 'testuser', 'password': 'testpassword', 'name' : 'testname', 'email': 'abc123@test.com'}
 
-#     # Add more tests for create functionality if needed
+    def test_create_user_authenticated(self):
+        url = reverse('user-list-create')
+        response = self.client.post(url, self.user_data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
-# class UserRetrieveUpdateDestroyAPIViewTest(BaseAuthenticatedAPITest):
-#     def test_user_retrieve(self):
-#         url = reverse('user-detail', kwargs={'pk': self.user.pk})
-#         response = self.get_authenticated_client().get(url)
-#         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-#     # Add more tests for update and destroy functionality if needed
+class PermissionsTest(TestCase):
 
-# class ItemListCreateAPIViewTest(BaseAuthenticatedAPITest):
-#     def test_item_list(self):
-#         url = reverse('item-list-create')
-#         response = self.get_authenticated_client().get(url)
-#         self.assertEqual(response.status_code, status.HTTP_200_OK)
+    def test_user_retrieve_update_destroy_api_permissions(self):
+        view = UserRetrieveUpdateDestroyAPIView()
+        permissions = view.permission_classes
+        self.assertIn(IsAuthenticated, permissions)
 
-#     # Add more tests for create functionality if needed
+    def test_item_list_create_api_permissions(self):
+        view = ItemListCreateAPIView()
+        permissions = view.permission_classes
+        self.assertIn(IsAuthenticated, permissions)
 
-# class ItemRetrieveUpdateDestroyAPIViewTest(BaseAuthenticatedAPITest):
-#     def setUp(self):
-#         super().setUp()
-#         self.item = Item.objects.create(name='Test Item')
+    def test_item_retrieve_update_destroy_api_permissions(self):
+        view = ItemRetrieveUpdateDestroyAPIView()
+        permissions = view.permission_classes
+        self.assertIn(IsAuthenticated, permissions)
 
-#     def test_item_retrieve(self):
-#         url = reverse('item-detail', kwargs={'pk': self.item.pk})
-#         response = self.get_authenticated_client().get(url)
-#         self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-#     # Add more tests for update and destroy functionality if needed
-
-# class ItemListAPIViewTest(BaseAuthenticatedAPITest):
-#     def setUp(self):
-#         super().setUp()
-#         self.item = Item.objects.create(name='Test Item')
-
-#     def test_item_list_filtering(self):
-#         url = reverse('item-list')
-#         response = self.get_authenticated_client().get(url)
-#         self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-#     # Add more tests for pagination and filtering if needed
+    def test_item_list_api_permissions(self):
+        view = ItemListAPIView()
+        permissions = view.permission_classes
+        self.assertIn(IsAuthenticated, permissions)
